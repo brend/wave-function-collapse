@@ -85,18 +85,19 @@ impl Cell {
     }
 
     fn average_color(&self) -> Color {
-        let mut r = 0;
-        let mut g = 0;
-        let mut b = 0;
+        let mut r: u32 = 0;
+        let mut g: u32 = 0;
+        let mut b: u32 = 0;
         for option in &self.options {
-            for color in &option.pixels {
-                r += color.r;
-                g += color.g;
-                b += color.b;
-            }
+            let mx = option.width / 2;
+            let my = option.height / 2;
+            let color = option.pixels[my * option.width + mx];
+            r += color.r as u32;
+            g += color.g as u32;
+            b += color.b as u32;
         }
-        let n = self.options.len() * self.options[0].pixels.len();
-        Color::new(r as u8 / n as u8, g as u8 / n as u8, b as u8 / n as u8, 255)
+        let n = self.options.len() as u32;
+        Color::new((r / n) as u8, (g / n) as u8, (b / n) as u8, 255)
     }
 
     fn draw(&self, d: &mut RaylibDrawHandle, x: i32, y: i32) {
@@ -145,10 +146,6 @@ fn main() {
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::DARKGOLDENROD);
 
-        //grid.draw(&mut d);
-
-        for (i, slice) in slices.iter().enumerate() {
-            slice.draw(&mut d, ((i % 7) * 4) as i32, ((i / 7) * 4) as i32);
-        }
+        grid.draw(&mut d);
     }
 }
