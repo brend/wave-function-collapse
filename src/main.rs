@@ -1,3 +1,4 @@
+use rand::Rng;
 use raylib::prelude::*;
 
 const SCREEN_WIDTH: i32 = 400;
@@ -70,6 +71,67 @@ impl Image {
             }
         }
     }
+
+    fn fits(&self, other: &Image, dx: i32, dy: i32) -> bool {
+        match (dx, dy) {
+            (0, -1) => self.fits_top(other),
+            (0, 1) => self.fits_bottom(other),
+            (-1, 0) => self.fits_left(other),
+            (1, 0) => self.fits_right(other),
+            _ => {
+                println!("Invalid direction: ({}, {})", dx, dy);
+                false
+            }
+        }
+    }
+
+    fn fits_top(&self, other: &Image) -> bool {
+        // self fits other if the top two rows of self match the bottom two rows of other
+        for y in 0..2 {
+            for x in 0..self.width {
+                if self.pixels[x + y * self.width] != other.pixels[x + (other.height - 2 + y) * other.width] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn fits_bottom(&self, other: &Image) -> bool {
+        // self fits other if the bottom two rows of self match the top two rows of other
+        for y in 0..2 {
+            for x in 0..self.width {
+                if self.pixels[x + (self.height - 2 + y) * self.width] != other.pixels[x + y * other.width] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn fits_left(&self, other: &Image) -> bool {
+        // self fits other if the left two columns of self match the right two columns of other
+        for y in 0..self.height {
+            for x in 0..2 {
+                if self.pixels[x + y * self.width] != other.pixels[(other.width - 2 + x) + y * other.width] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn fits_right(&self, other: &Image) -> bool {
+        // self fits other if the right two columns of self match the left two columns of other
+        for y in 0..self.height {
+            for x in 0..2 {
+                if self.pixels[(self.width - 2 + x) + y * self.width] != other.pixels[x + y * other.width] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +147,12 @@ impl Cell {
     }
 
     fn average_color(&self) -> Color {
+        let n = self.options.len() as u32;
+
+        if n == 0 {
+            return Color::MAGENTA;
+        }
+        
         let mut r: u32 = 0;
         let mut g: u32 = 0;
         let mut b: u32 = 0;
@@ -96,13 +164,13 @@ impl Cell {
             g += color.g as u32;
             b += color.b as u32;
         }
-        let n = self.options.len() as u32;
+        
         Color::new((r / n) as u8, (g / n) as u8, (b / n) as u8, 255)
     }
 
     fn draw(&self, d: &mut RaylibDrawHandle, x: i32, y: i32) {
         d.draw_rectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, self.average_color());
-        d.draw_rectangle_lines(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, Color::LIGHTGRAY);
+       // d.draw_rectangle_lines(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, Color::LIGHTGRAY);
     }
 }
 
@@ -130,6 +198,42 @@ impl Grid {
             }
         }
     }
+
+    fn update(&mut self) {
+        // find the cells with the fewest options
+        let mut min_options = usize::MAX;
+        let mut min_x = 0;
+        let mut min_y = 0;
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let cell = &self.cells[y * self.width + x];
+                let n = cell.options.len();
+                if n < min_options && n > 1 {
+                    min_options = n;
+                    min_x = x;
+                    min_y = y;
+                }
+            }
+        }
+        // if there are no cells with more than one option, we are done
+        if min_options == 1 {
+            return;
+        }
+        // pick a random option for the cell with the fewest options
+        let cell = &mut self.cells[min_y * self.width + min_x];
+        let option = &cell.options[rand::thread_rng().gen_range(0..cell.options.len())].clone();
+        cell.options = vec![option.clone()];
+        // from each neighboring cell, remove any options that are incompatible with the new option
+        let neighbors = [(0, -1), (0, 1), (-1, 0), (1, 0)];
+        for (dx, dy) in &neighbors {
+            let x = min_x as i32 + dx;
+            let y = min_y as i32 + dy;
+            if x >= 0 && x < self.width as i32 && y >= 0 && y < self.height as i32 {
+                let neighbor = &mut self.cells[y as usize * self.width + x as usize];
+                neighbor.options.retain(|neighbor_option| option.fits(neighbor_option, *dx, *dy));
+            }
+        }
+    }
 }
 
 fn main() {
@@ -146,6 +250,9 @@ fn main() {
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::DARKGOLDENROD);
 
+        grid.update();
         grid.draw(&mut d);
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }
