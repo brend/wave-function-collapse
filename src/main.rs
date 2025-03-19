@@ -7,6 +7,7 @@ const CELL_SIZE: i32 = 10;
 
 const TITLE: &str = "Wave Function Collapse";
 
+#[derive(Debug, Clone)]
 struct Image {
     width: usize,
     height: usize,
@@ -71,17 +72,35 @@ impl Image {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Cell {
+    options: Vec<Image>,
 }
 
 impl Cell {
-    fn new() -> Self {
-        Self {}
+    fn new(options: &Vec<Image>) -> Self {
+        Self {
+            options: options.clone(),
+        }
+    }
+
+    fn average_color(&self) -> Color {
+        let mut r = 0;
+        let mut g = 0;
+        let mut b = 0;
+        for option in &self.options {
+            for color in &option.pixels {
+                r += color.r;
+                g += color.g;
+                b += color.b;
+            }
+        }
+        let n = self.options.len() * self.options[0].pixels.len();
+        Color::new(r as u8 / n as u8, g as u8 / n as u8, b as u8 / n as u8, 255)
     }
 
     fn draw(&self, d: &mut RaylibDrawHandle, x: i32, y: i32) {
-        d.draw_rectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, Color::RAYWHITE);
+        d.draw_rectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, self.average_color());
         d.draw_rectangle_lines(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, Color::LIGHTGRAY);
     }
 }
@@ -93,8 +112,8 @@ struct Grid {
 }
 
 impl Grid {
-    fn new(width: usize, height: usize) -> Self {
-        let cells = vec![Cell::new(); width * height];
+    fn new(width: usize, height: usize, options: &Vec<Image>) -> Self {
+        let cells = vec![Cell::new(options); width * height];
         Self {
             width,
             height,
@@ -118,11 +137,9 @@ fn main() {
         .title(TITLE)
         .build();
 
-    //let mut grid = Grid::new(40, 40);
     let image = Image::city();
     let slices = image.slices(3, 3);
-
-    println!("slice count: {}", slices.len());
+    let mut grid = Grid::new(40, 40, &slices);
 
     while !rl.window_should_close() {
         let mut d = rl.begin_drawing(&thread);
