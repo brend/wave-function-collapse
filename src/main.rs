@@ -47,12 +47,12 @@ impl Image {
 
     fn slices(&self, slice_width: usize, slice_height: usize) -> Vec<Image> {
         let mut slices = Vec::new();
-        for y in 0..self.height / slice_height {
-            for x in 0..self.width / slice_width {
+        for y in 0..(self.height - slice_height + 1) {
+            for x in 0..(self.width - slice_width + 1) {
                 let mut slice = Image::new(slice_width, slice_height);
                 for sy in 0..slice_height {
                     for sx in 0..slice_width {
-                        slice.pixels[sy * slice_width + sx] = self.pixels[(y * slice_height + sy) * self.width + x * slice_width + sx];
+                        slice.pixels[sy * slice_width + sx] = self.pixels[(y + sy) * self.width + x + sx];
                     }
                 }
                 slices.push(slice);
@@ -131,7 +131,7 @@ fn main() {
         //grid.draw(&mut d);
 
         for (i, slice) in slices.iter().enumerate() {
-            slice.draw(&mut d, (i % 3) as i32, (i / 3) as i32);
+            slice.draw(&mut d, ((i % 7) * 4) as i32, ((i / 7) * 4) as i32);
         }
     }
 }
