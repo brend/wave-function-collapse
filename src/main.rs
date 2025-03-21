@@ -1,5 +1,6 @@
 use rand::Rng;
 use raylib::prelude::*;
+use std::collections::VecDeque;
 
 const SCREEN_WIDTH: i32 = 400;
 const SCREEN_HEIGHT: i32 = 400;
@@ -136,17 +137,19 @@ impl Image {
 
 #[derive(Debug, Clone)]
 struct Cell {
-    options: Vec<Image>,
+    options: Vec<usize>,
+    collapsed: bool,
 }
 
 impl Cell {
-    fn new(options: &Vec<Image>) -> Self {
+    fn new(option_count: usize) -> Self {
         Self {
-            options: options.clone(),
+            options: (0..option_count).collect(),
+            collapsed: false,
         }
     }
 
-    fn average_color(&self) -> Color {
+    fn average_color(&self, tiles: &Vec<Image>) -> Color {
         let n = self.options.len() as u32;
 
         if n == 0 {
@@ -156,7 +159,8 @@ impl Cell {
         let mut r: u32 = 0;
         let mut g: u32 = 0;
         let mut b: u32 = 0;
-        for option in &self.options {
+        for option_index in self.options.iter() {
+            let option = &tiles[*option_index];
             let mx = option.width / 2;
             let my = option.height / 2;
             let color = option.pixels[my * option.width + mx];
@@ -168,25 +172,36 @@ impl Cell {
         Color::new((r / n) as u8, (g / n) as u8, (b / n) as u8, 255)
     }
 
-    fn draw(&self, d: &mut RaylibDrawHandle, x: i32, y: i32) {
-        d.draw_rectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, self.average_color());
-       // d.draw_rectangle_lines(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, Color::LIGHTGRAY);
+    fn draw(&self, d: &mut RaylibDrawHandle, x: i32, y: i32, tiles: &Vec<Image>) {
+        d.draw_rectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, self.average_color(tiles));
+    }
+
+    fn collapse(&mut self, rng: &mut rand::rngs::ThreadRng) {
+        let index = rng.gen_range(0..self.options.len());
+        self.options = vec![self.options[index]];
+        self.collapsed = true;
     }
 }
 
 struct Grid {
+    tiles: Vec<Image>,
     width: usize,
     height: usize,
     cells: Vec<Cell>,
 }
 
 impl Grid {
-    fn new(width: usize, height: usize, options: &Vec<Image>) -> Self {
-        let cells = vec![Cell::new(options); width * height];
+    fn new(width: usize, height: usize, image: &Image) -> Self {
+        let tiles = image.slices(3, 3);
+        let mut cells = vec![];
+        for _ in 0..width * height {
+            cells.push(Cell::new(tiles.len()));
+        }
         Self {
             width,
             height,
             cells,
+            tiles,
         }
     }
 
@@ -194,43 +209,71 @@ impl Grid {
         for y in 0..self.height {
             for x in 0..self.width {
                 let cell = &self.cells[y * self.width + x];
-                cell.draw(d, x as i32, y as i32);
+                cell.draw(d, x as i32, y as i32, &self.tiles);
             }
         }
     }
 
     fn update(&mut self) {
-        // find the cells with the fewest options
         let mut min_options = usize::MAX;
         let mut min_x = 0;
         let mut min_y = 0;
         for y in 0..self.height {
             for x in 0..self.width {
                 let cell = &self.cells[y * self.width + x];
-                let n = cell.options.len();
-                if n < min_options && n > 1 {
-                    min_options = n;
-                    min_x = x;
-                    min_y = y;
+                if !cell.collapsed {
+                    let n = cell.options.len();
+                    if n < min_options && n > 1 {
+                        min_options = n;
+                        min_x = x;
+                        min_y = y;
+                    }
                 }
             }
         }
-        // if there are no cells with more than one option, we are done
+
         if min_options == 1 {
             return;
         }
-        // pick a random option for the cell with the fewest options
-        let cell = &mut self.cells[min_y * self.width + min_x];
-        let option = &cell.options[rand::thread_rng().gen_range(0..cell.options.len())].clone();
-        cell.options = vec![option.clone()];
-        // from each neighboring cell, remove any options that are incompatible with the new option
+
+        let cell_index = min_y * self.width + min_x;
+        self.cells[cell_index].collapse(&mut rand::thread_rng());
+
+        let mut queue = VecDeque::new();
+        queue.push_back((min_x, min_y));
+
         let neighbors = [(0, -1), (0, 1), (-1, 0), (1, 0)];
-        for (dx, dy) in &neighbors {
-            let x = min_x as i32 + dx;
-            let y = min_y as i32 + dy;
-            if x >= 0 && x < self.width as i32 && y >= 0 && y < self.height as i32 {
-                let neighbor = &mut self.cells[y as usize * self.width + x as usize];
-                neighbor.options.retain(|neighbor_option| option.fits(neighbor_option, *dx, *dy));
+
+        println!("xxx");
+        while let Some((x, y)) = queue.pop_front() {
+            println!("Collapsing ({}, {})", x, y);
+            let index = y * self.width + x;
+            let options = self.cells[index].options.clone();
+
+            for (dx, dy) in neighbors {
+                let nx = x as i32 + dx;
+                let ny = y as i32 + dy;
+
+                if nx >= 0 && ny >= 0 && nx < self.width as i32 && ny < self.height as i32 {
+                    let nindex = ny as usize * self.width + nx as usize;
+                    let neighbor = &mut self.cells[nindex];
+                    if neighbor.collapsed {
+                        continue;
+                    }
+
+                    let before = neighbor.options.len();
+                    neighbor.options.retain(|&neighbor_option| {
+                        options.iter().any(|&opt| self.tiles[opt].fits(&self.tiles[neighbor_option], dx, dy))
+                    });
+
+                    if neighbor.options.is_empty() {
+                        println!("⚠️ Contradiction: No options left at ({}, {})", nx, ny);
+                    }
+
+                    if neighbor.options.len() < before {
+                        queue.push_back((nx as usize, ny as usize));
+                    }
+                }
             }
         }
     }
@@ -243,16 +286,18 @@ fn main() {
         .build();
 
     let image = Image::city();
+    //let mut grid = Grid::new(40, 40, &image);
     let slices = image.slices(3, 3);
-    let mut grid = Grid::new(40, 40, &slices);
+
+    println!("Slices: {}", slices.len());
 
     while !rl.window_should_close() {
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::DARKGOLDENROD);
 
-        grid.update();
-        grid.draw(&mut d);
+        // grid.update();
+        // grid.draw(&mut d);
 
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        //std::thread::sleep(std::time::Duration::from_millis(1000));
     }
 }
