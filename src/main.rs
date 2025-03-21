@@ -50,12 +50,14 @@ impl Image {
 
     fn slices(&self, slice_width: usize, slice_height: usize) -> Vec<Image> {
         let mut slices = Vec::new();
-        for y in 0..(self.height - slice_height + 1) {
-            for x in 0..(self.width - slice_width + 1) {
+        for y in 0..self.height {
+            for x in 0..self.width {
                 let mut slice = Image::new(slice_width, slice_height);
                 for sy in 0..slice_height {
                     for sx in 0..slice_width {
-                        slice.pixels[sy * slice_width + sx] = self.pixels[(y + sy) * self.width + x + sx];
+                        let px = (x + sx) % self.width;
+                        let py = (y + sy) % self.height;
+                        slice.pixels[sy * slice_width + sx] = self.pixels[py * self.width + px];
                     }
                 }
                 slices.push(slice);
@@ -286,17 +288,14 @@ fn main() {
         .build();
 
     let image = Image::city();
-    //let mut grid = Grid::new(40, 40, &image);
-    let slices = image.slices(3, 3);
-
-    println!("Slices: {}", slices.len());
+    let mut grid = Grid::new(40, 40, &image);
 
     while !rl.window_should_close() {
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::DARKGOLDENROD);
 
-        // grid.update();
-        // grid.draw(&mut d);
+        grid.update();
+        grid.draw(&mut d);
 
         //std::thread::sleep(std::time::Duration::from_millis(1000));
     }
