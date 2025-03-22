@@ -16,6 +16,7 @@ const TITLE: &str = "Wave Function Collapse";
 struct Cell {
     options: Vec<usize>,
     collapsed: bool,
+    color: Color,
 }
 
 impl Cell {
@@ -23,14 +24,20 @@ impl Cell {
         Self {
             options: (0..option_count).collect(),
             collapsed: false,
+            color: Color::PEACHPUFF,
         }
     }
 
-    fn average_color(&self, tiles: &Vec<Image>) -> Color {
+    pub fn average_color(&self) -> Color {
+        self.color
+    }
+
+    fn update_color(&mut self, tiles: &Vec<Image>) {
         let n = self.options.len() as u32;
 
         if n == 0 {
-            return Color::MAGENTA;
+            self.color = Color::MAGENTA;
+            return;
         }
         
         let mut r: u32 = 0;
@@ -46,17 +53,18 @@ impl Cell {
             b += color.b as u32;
         }
         
-        Color::new((r / n) as u8, (g / n) as u8, (b / n) as u8, 255)
+        self.color = Color::new((r / n) as u8, (g / n) as u8, (b / n) as u8, 255)
     }
 
-    fn draw(&self, d: &mut RaylibDrawHandle, x: i32, y: i32, tiles: &Vec<Image>) {
-        d.draw_rectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, self.average_color(tiles));
+    fn draw(&self, d: &mut RaylibDrawHandle, x: i32, y: i32) {
+        d.draw_rectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, self.color);
     }
 
-    fn collapse(&mut self, rng: &mut rand::rngs::ThreadRng) {
+    fn collapse(&mut self, rng: &mut rand::rngs::ThreadRng, tiles: &Vec<Image>) {
         let index = rng.gen_range(0..self.options.len());
         self.options = vec![self.options[index]];
         self.collapsed = true;
+        self.update_color(tiles);
     }
 }
 
@@ -86,7 +94,7 @@ impl Grid {
         for y in 0..self.height {
             for x in 0..self.width {
                 let cell = &self.cells[y * self.width + x];
-                cell.draw(d, x as i32, y as i32, &self.tiles);
+                cell.draw(d, x as i32, y as i32);
             }
         }
     }
@@ -114,7 +122,7 @@ impl Grid {
         }
 
         let cell_index = min_y * self.width + min_x;
-        self.cells[cell_index].collapse(&mut rand::thread_rng());
+        self.cells[cell_index].collapse(&mut rand::thread_rng(), &self.tiles);
 
         let mut queue = VecDeque::new();
         queue.push_back((min_x, min_y));
@@ -147,6 +155,7 @@ impl Grid {
 
                     if neighbor.options.len() < before {
                         queue.push_back((nx as usize, ny as usize));
+                        neighbor.update_color(&self.tiles);
                     }
                 }
             }
@@ -161,8 +170,13 @@ fn main() {
         .build();
 
     //let image = Image::city();
-    let image = load_image_from_png("assets/ColoredCity.png").unwrap();
+    let image = load_image_from_png("assets/floor.png").unwrap();
     let mut grid = Grid::new(40, 40, &image);
+
+    // HACK
+    for cell in grid.cells.iter_mut() {
+        cell.update_color(&grid.tiles);
+    }
 
     while !rl.window_should_close() {
         let mut d = rl.begin_drawing(&thread);
