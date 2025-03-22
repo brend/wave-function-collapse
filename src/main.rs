@@ -1,4 +1,4 @@
-use wfc::{grid::Grid, image::{load_image_from_png, Image}};
+use wfc::{grid::Grid, image::*};
 
 const SCREEN_WIDTH: i32 = 400;
 const SCREEN_HEIGHT: i32 = 400;
@@ -11,8 +11,7 @@ fn main() {
         .title(TITLE)
         .build();
 
-    // let image = load_image_from_png("assets/floor.png").unwrap();
-    let image = Image::city();
+    let image = load_image_from_png("assets/floor.png").unwrap();
     let mut grid = Grid::new(40, 40, &image);
 
     while !rl.window_should_close() {

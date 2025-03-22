@@ -75,9 +75,6 @@ impl Grid {
     }
 
     fn propagate(&mut self, min_x: usize, min_y: usize) {
-        let cell_index = min_y * self.width + min_x;
-        let min_cell = &self.cells[cell_index].clone();
-
         let mut queue = VecDeque::new();
         
         queue.push_back((min_x, min_y));
@@ -85,6 +82,8 @@ impl Grid {
         let neighbors = [(0, -1), (0, 1), (-1, 0), (1, 0)];
 
         while let Some((x, y)) = queue.pop_front() {
+            let cell = &self.cells[y * self.width + x].clone();
+            
             for (dx, dy) in neighbors {
                 let nx = x as i32 + dx;
                 let ny = y as i32 + dy;
@@ -100,7 +99,7 @@ impl Grid {
                 }
 
                 let before = neighbor.option_count();
-                neighbor.reduce_options(&min_cell, dx, dy, &self.tiles);
+                neighbor.reduce_options(&cell, dx, dy, &self.tiles);
 
                 if neighbor.option_count() == 0 {
                     println!("⚠️ Contradiction: No options left at ({}, {})", nx, ny);
