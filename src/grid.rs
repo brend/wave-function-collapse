@@ -111,10 +111,6 @@ impl Grid {
         while let Some((x, y)) = queue.pop_front() {
             let cell = &mut self.cells[y * self.width + x];
 
-            if cell.checked {
-                continue;
-            }
-
             cell.checked = true;
 
             let cell = cell.clone();
@@ -130,10 +126,11 @@ impl Grid {
                 
                 let nindex = ny as usize * self.width + nx as usize;
                 let neighbor = &mut self.cells[nindex];
-                if neighbor.checked || neighbor.is_collapsed() {
+                if neighbor.is_collapsed() {
                     continue;
                 }
 
+                neighbor.checked = true;
                 let before = neighbor.option_count();
                 neighbor.reduce_options(&cell, *dir, &self.adjacencies);
 
