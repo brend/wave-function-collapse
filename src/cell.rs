@@ -1,13 +1,19 @@
+use std::collections::HashMap;
+
 use rand::{rngs::ThreadRng, Rng};
 use raylib::prelude::*;
 use super::image::Image;
+use super::direction::Direction;
 
 pub const CELL_SIZE: i32 = 10;
+
+type TileIndex = usize;
 
 #[derive(Debug, Clone)]
 pub struct Cell {
     options: Vec<usize>,
     collapsed: bool,
+    pub checked: bool,
     color: Color,
 }
 
@@ -16,11 +22,12 @@ impl Cell {
         Self {
             options: (0..option_count).collect(),
             collapsed: false,
+            checked: false,
             color: Color::PEACHPUFF,
         }
     }
 
-    fn update_color(&mut self, tiles: &Vec<Image>) {
+    pub fn update_color(&mut self, tiles: &Vec<Image>) {
         let n = self.options.len() as u32;
 
         if n == 0 {
@@ -48,11 +55,13 @@ impl Cell {
         d.draw_rectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, self.color);
     }
 
-    pub fn collapse(&mut self, rng: &mut ThreadRng, tiles: &Vec<Image>) {
+    pub fn collapse(&mut self, rng: &mut ThreadRng) {
+        if self.collapsed {
+            return;
+        }
         let index = rng.gen_range(0..self.options.len());
         self.options = vec![self.options[index]];
         self.collapsed = true;
-        self.update_color(tiles);
     }
 
     pub fn is_collapsed(&self) -> bool {
@@ -63,12 +72,15 @@ impl Cell {
         self.options.len()
     }
 
-    pub fn reduce_options(&mut self, other: &Cell, dx: i32, dy: i32, tiles: &Vec<Image>) {
-        let before = self.options.len();
-        self.options.retain(|&x| other.options.iter().any(|&y| tiles[x].fits(&tiles[y], dx, dy)));
-        if self.options.len() != before {
-            self.update_color(tiles);
+    pub fn reduce_options(&mut self, other: &Cell, dir: Direction, adjacencies: &HashMap<(TileIndex, Direction, TileIndex), bool>) {
+        if self.collapsed {
+            return;
         }
+        self.options.retain(|&x| {
+            other.options.iter().any(|&y| {
+                adjacencies.get(&(x, dir, y)).copied().unwrap_or(false)
+            })
+        });
         if self.options.len() == 1 {
             self.collapsed = true;
         }

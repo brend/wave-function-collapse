@@ -69,14 +69,14 @@ impl Image {
         }
     }
 
-    pub fn fits(&self, other: &Image, dx: i32, dy: i32) -> bool {
-        match (dx, dy) {
+    pub fn fits(&self, other: &Image, offset: (i32, i32)) -> bool {
+        match offset {
             (0, -1) => self.fits_top(other),
             (0, 1) => self.fits_bottom(other),
             (-1, 0) => self.fits_left(other),
             (1, 0) => self.fits_right(other),
             _ => {
-                println!("Invalid direction: ({}, {})", dx, dy);
+                println!("Invalid direction: ({}, {})", offset.0, offset.1);
                 false
             }
         }

@@ -1,19 +1,38 @@
 use raylib::prelude::*;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use super::image::Image;
 use super::cell::Cell;
+use super::direction::Direction;
+
+type TileIndex = usize;
+
+fn compute_adjacencies(tiles: &Vec<Image>) -> HashMap<(TileIndex, Direction, TileIndex), bool> {
+    let mut adjacencies = HashMap::new();
+    for (i, tile) in tiles.iter().enumerate() {
+        for (j, other) in tiles.iter().enumerate() {
+            for dir in [Direction::North, Direction::South, Direction::East, Direction::West].iter() {
+                let tiles_fit = tile.fits(&other, dir.offsets());
+                adjacencies.insert((i, dir.clone(), j), tiles_fit);
+            }
+        }
+    }
+
+    adjacencies
+}
 
 pub struct Grid {
     tiles: Vec<Image>,
     width: usize,
     height: usize,
     cells: Vec<Cell>,
+    adjacencies: HashMap<(TileIndex, Direction, TileIndex), bool>,
     rng: rand::rngs::ThreadRng,
 }
 
 impl Grid {
     pub fn new(width: usize, height: usize, image: &Image) -> Self {
         let tiles = image.slices(3, 3);
+        let adjacencies = compute_adjacencies(&tiles);
         let mut cells = vec![];
         for _ in 0..width * height {
             cells.push(Cell::new(tiles.len()));
@@ -23,6 +42,7 @@ impl Grid {
             height,
             cells,
             tiles,
+            adjacencies,
             rng: rand::thread_rng(),
         }
     }
@@ -37,9 +57,14 @@ impl Grid {
     }
 
     pub fn update(&mut self) {
-        if let Some((x, y)) = self.find_next_uncollapsed() {
+        let cell = self.find_next_uncollapsed();
+        if let Some((x, y)) = cell {
             self.collapse(x, y);
             self.propagate(x, y);
+
+            for cell in self.cells.iter_mut() {
+                cell.update_color(&self.tiles);
+            }
         }
     }
 
@@ -71,20 +96,31 @@ impl Grid {
     fn collapse(&mut self, min_x: usize, min_y: usize) {
         let cell_index = min_y * self.width + min_x;
         let min_cell = &mut self.cells[cell_index];
-        min_cell.collapse(&mut self.rng, &self.tiles);
+        min_cell.collapse(&mut self.rng);
     }
 
     fn propagate(&mut self, min_x: usize, min_y: usize) {
+        for cell in self.cells.iter_mut() {
+            cell.checked = false;
+        }
+
         let mut queue = VecDeque::new();
         
         queue.push_back((min_x, min_y));
 
-        let neighbors = [(0, -1), (0, 1), (-1, 0), (1, 0)];
-
         while let Some((x, y)) = queue.pop_front() {
-            let cell = &self.cells[y * self.width + x].clone();
-            
-            for (dx, dy) in neighbors {
+            let cell = &mut self.cells[y * self.width + x];
+
+            if cell.checked {
+                continue;
+            }
+
+            cell.checked = true;
+
+            let cell = cell.clone();
+
+            for dir in [Direction::North, Direction:: East, Direction::South, Direction::West].iter() {
+                let (dx, dy) = dir.offsets();
                 let nx = x as i32 + dx;
                 let ny = y as i32 + dy;
 
@@ -94,12 +130,12 @@ impl Grid {
                 
                 let nindex = ny as usize * self.width + nx as usize;
                 let neighbor = &mut self.cells[nindex];
-                if neighbor.is_collapsed() {
+                if neighbor.checked || neighbor.is_collapsed() {
                     continue;
                 }
 
                 let before = neighbor.option_count();
-                neighbor.reduce_options(&cell, dx, dy, &self.tiles);
+                neighbor.reduce_options(&cell, *dir, &self.adjacencies);
 
                 if neighbor.option_count() == 0 {
                     println!("⚠️ Contradiction: No options left at ({}, {})", nx, ny);
